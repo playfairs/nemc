@@ -1,6 +1,6 @@
 project "nemc" {
     version = file("./VERSION")
-    description = "The official NEM compiler implementation."
+    description = "The Nem Compiler."
     license = "Unlicense"
     version_files = ["VERSION"]
 
