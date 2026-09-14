@@ -1,0 +1,5 @@
+root=/Volumes/Femboy >_</Developer/nox-build-system/nemc
+configuration=debug
+compiler=cc
+linker=cc
+archiver=ar

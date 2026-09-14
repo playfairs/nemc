@@ -1,0 +1,42 @@
+project "nemc" {
+    version = file("./VERSION")
+    description = "The official NEM compiler implementation."
+    license = "Unlicense"
+    version_files = ["VERSION"]
+
+    executable "nemc" {
+        sources = [
+            "cli/main.c",
+            "compiler/support/source.c",
+            "compiler/ast/ast.c",
+            "compiler/lexer/lexer.c",
+            "compiler/parser/parser.c",
+            "compiler/nemantics/nemantics.c",
+            "compiler/diagnostics/diagnostics.c",
+            "compiler/ir/ir.c",
+            "compiler/codegen/codegen.c",
+            "compiler/driver/driver.c"
+        ]
+        include_dirs = ["include"]
+        flags = ["-std=c11", "-Wall", "-Wextra"]
+        install = true
+    }
+
+    executable "nem-tests" {
+        sources = [
+            "tests/test_main.c",
+            "compiler/support/source.c",
+            "compiler/ast/ast.c",
+            "compiler/lexer/lexer.c",
+            "compiler/parser/parser.c",
+            "compiler/nemantics/nemantics.c",
+            "compiler/diagnostics/diagnostics.c",
+            "compiler/ir/ir.c",
+            "compiler/codegen/codegen.c",
+            "compiler/driver/driver.c"
+        ]
+        include_dirs = ["include"]
+        flags = ["-std=c11", "-Wall", "-Wextra"]
+        install = false
+    }
+}
