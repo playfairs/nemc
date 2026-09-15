@@ -38,6 +38,14 @@ static int type_equal(const Type *left, const Type *right) {
     return strcmp(left->name, right->name) == 0;
 }
 
+static int is_bool_operation(char op) {
+    return op == '&' || op == '|' || op == '!';
+}
+
+static int is_comparison_operation(char op) {
+    return op == '=' || op == '!' || op == '<' || op == 'L' || op == '>' || op == 'G';
+}
+
 static Type infer_expression_type(const AstNode *node, Scope *scope) {
     if (node == NULL) {
         return type_create(TYPE_KIND_UNKNOWN, "unknown");
@@ -47,6 +55,8 @@ static Type infer_expression_type(const AstNode *node, Scope *scope) {
             return type_create(TYPE_KIND_INT, "int");
         case AST_STRING_LITERAL:
             return type_create(TYPE_KIND_STRING, "string");
+        case AST_BOOL_LITERAL:
+            return type_create(TYPE_KIND_BOOL, "bool");
         case AST_IDENTIFIER: {
             if (scope == NULL) {
                 return type_create(TYPE_KIND_UNKNOWN, "unknown");
@@ -59,11 +69,68 @@ static Type infer_expression_type(const AstNode *node, Scope *scope) {
         }
         case AST_CALL:
             return node->type;
-        case AST_BINARY_EXPR:
-            return type_create(TYPE_KIND_INT, "int");
+        case AST_BINARY_EXPR: {
+            Type left = infer_expression_type(node->as.binary_expr.left, scope);
+            Type right = infer_expression_type(node->as.binary_expr.right, scope);
+            Type result = type_create(TYPE_KIND_UNKNOWN, "unknown");
+            if (is_bool_operation(node->as.binary_expr.op)) {
+                if (type_equal(&left, &(Type){TYPE_KIND_BOOL, "bool"}) && type_equal(&right, &(Type){TYPE_KIND_BOOL, "bool"})) {
+                    result = type_create(TYPE_KIND_BOOL, "bool");
+                }
+            } else if (is_comparison_operation(node->as.binary_expr.op)) {
+                if (type_equal(&left, &(Type){TYPE_KIND_INT, "int"}) && type_equal(&right, &(Type){TYPE_KIND_INT, "int"})) {
+                    result = type_create(TYPE_KIND_BOOL, "bool");
+                }
+            } else {
+                if (type_equal(&left, &(Type){TYPE_KIND_INT, "int"}) && type_equal(&right, &(Type){TYPE_KIND_INT, "int"})) {
+                    result = type_create(TYPE_KIND_INT, "int");
+                }
+            }
+            type_free(&left);
+            type_free(&right);
+            return result;
+        }
+        case AST_UNARY_EXPR: {
+            Type value = infer_expression_type(node->as.unary_expr.value, scope);
+            Type result = type_create(TYPE_KIND_UNKNOWN, "unknown");
+            if (node->as.unary_expr.op == '!') {
+                if (type_equal(&value, &(Type){TYPE_KIND_BOOL, "bool"})) {
+                    result = type_create(TYPE_KIND_BOOL, "bool");
+                }
+            }
+            type_free(&value);
+            return result;
+        }
         default:
             return type_create(TYPE_KIND_UNKNOWN, "unknown");
     }
+}
+
+static int block_returns_on_all_paths(const AstList *block) {
+    if (block == NULL) {
+        return 0;
+    }
+    for (size_t i = 0; i < block->count; ++i) {
+        const AstNode *statement = block->items[i];
+        if (statement == NULL) {
+            continue;
+        }
+        if (statement->kind == AST_RETURN) {
+            return 1;
+        }
+        if (statement->kind == AST_IF) {
+            if (statement->as.if_stmt.then_branch == NULL || statement->as.if_stmt.else_branch == NULL) {
+                continue;
+            }
+            if (statement->as.if_stmt.then_branch->kind == AST_BLOCK && statement->as.if_stmt.else_branch->kind == AST_BLOCK) {
+                if (block_returns_on_all_paths(&statement->as.if_stmt.then_branch->as.block.statements) &&
+                    block_returns_on_all_paths(&statement->as.if_stmt.else_branch->as.block.statements)) {
+                    return 1;
+                }
+            }
+        }
+    }
+    return 0;
 }
 
 void scope_push(Scope *scope, Scope **current) {
@@ -93,7 +160,7 @@ void scope_pop(Scope **current) {
     *current = next;
 }
 
-void scope_define_symbol(Scope *scope, const char *name, const Type *type, int is_parameter, int is_function) {
+void scope_define_symbol(Scope *scope, const char *name, const Type *type, int is_parameter, int is_function, int is_mutable) {
     if (scope == NULL || name == NULL) {
         return;
     }
@@ -103,6 +170,7 @@ void scope_define_symbol(Scope *scope, const char *name, const Type *type, int i
     symbol.is_parameter = is_parameter;
     symbol.is_function = is_function;
     symbol.is_defined = 1;
+    symbol.is_mutable = is_mutable;
     symbol_table_push(&scope->symbols, &symbol);
 }
 
@@ -145,13 +213,13 @@ Diagnostics *nemantics_validate(const Program *program) {
         }
 
         Type fn_type = function->as.function.return_type;
-        scope_define_symbol(global, function->as.function.name, &fn_type, 0, 1);
+        scope_define_symbol(global, function->as.function.name, &fn_type, 0, 1, 0);
 
         Scope *local = NULL;
         scope_push(global, &local);
         for (size_t j = 0; j < function->as.function.parameters.count; ++j) {
             const AstNode *parameter = function->as.function.parameters.items[j];
-            scope_define_symbol(local, parameter->as.parameter.name, &parameter->as.parameter.type, 1, 0);
+            scope_define_symbol(local, parameter->as.parameter.name, &parameter->as.parameter.type, 1, 0, 0);
         }
 
         for (size_t j = 0; j < function->as.function.body.count; ++j) {
@@ -166,7 +234,7 @@ Diagnostics *nemantics_validate(const Program *program) {
                     diagnostics_add(diagnostics, DIAGNOSTIC_ERROR, "variable initializer type mismatch", &statement->span);
                 }
                 type_free(&inferred);
-                scope_define_symbol(local, statement->as.var_decl.name, &statement->as.var_decl.type, 0, 0);
+                scope_define_symbol(local, statement->as.var_decl.name, &statement->as.var_decl.type, 0, 0, statement->as.var_decl.is_mutable);
             } else if (statement->kind == AST_RETURN) {
                 Type inferred = infer_expression_type(statement->as.return_stmt.value, local);
                 if (!type_equal(&function->as.function.return_type, &inferred)) {
@@ -178,8 +246,43 @@ Diagnostics *nemantics_validate(const Program *program) {
                     Type arg_type = infer_expression_type(statement->as.call.arguments.items[0], local);
                     type_free(&arg_type);
                 }
+            } else if (statement->kind == AST_ASSIGNMENT) {
+                if (statement->as.assignment.target == NULL || statement->as.assignment.target->kind != AST_IDENTIFIER) {
+                    diagnostics_add(diagnostics, DIAGNOSTIC_ERROR, "invalid assignment target", &statement->span);
+                    continue;
+                }
+                Symbol *target = scope_lookup(local, statement->as.assignment.target->as.identifier.name);
+                if (target == NULL) {
+                    diagnostics_add(diagnostics, DIAGNOSTIC_ERROR, "undefined variable in assignment", &statement->span);
+                    continue;
+                }
+                if (!target->is_mutable) {
+                    diagnostics_add(diagnostics, DIAGNOSTIC_ERROR, "cannot assign to immutable variable", &statement->span);
+                }
+                Type value_type = infer_expression_type(statement->as.assignment.value, local);
+                if (!type_equal(&target->type, &value_type)) {
+                    diagnostics_add(diagnostics, DIAGNOSTIC_ERROR, "assignment type mismatch", &statement->span);
+                }
+                type_free(&value_type);
+            } else if (statement->kind == AST_IF) {
+                Type cond = infer_expression_type(statement->as.if_stmt.condition, local);
+                if (!type_equal(&cond, &(Type){TYPE_KIND_BOOL, "bool"})) {
+                    diagnostics_add(diagnostics, DIAGNOSTIC_ERROR, "expected bool condition", &statement->span);
+                }
+                type_free(&cond);
+            } else if (statement->kind == AST_WHILE) {
+                Type cond = infer_expression_type(statement->as.while_stmt.condition, local);
+                if (!type_equal(&cond, &(Type){TYPE_KIND_BOOL, "bool"})) {
+                    diagnostics_add(diagnostics, DIAGNOSTIC_ERROR, "expected bool condition", &statement->span);
+                }
+                type_free(&cond);
             }
         }
+
+        if (function->as.function.return_type.kind != TYPE_KIND_VOID && !block_returns_on_all_paths(&function->as.function.body)) {
+            diagnostics_add(diagnostics, DIAGNOSTIC_ERROR, "missing return value on some control-flow paths", &function->span);
+        }
+
         scope_pop(&local);
     }
 

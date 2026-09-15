@@ -12,6 +12,7 @@ typedef struct {
     int is_parameter;
     int is_function;
     int is_defined;
+    int is_mutable;
 } Symbol;
 
 typedef struct {
@@ -29,7 +30,7 @@ struct Scope {
 Diagnostics *nemantics_validate(const Program *program);
 void scope_push(Scope *scope, Scope **current);
 void scope_pop(Scope **current);
-void scope_define_symbol(Scope *scope, const char *name, const Type *type, int is_parameter, int is_function);
+void scope_define_symbol(Scope *scope, const char *name, const Type *type, int is_parameter, int is_function, int is_mutable);
 Symbol *scope_lookup(Scope *scope, const char *name);
 
 #endif

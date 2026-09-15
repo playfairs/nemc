@@ -107,7 +107,7 @@ AstNode *ast_parameter_create(const char *name, const Type *type, const Span *sp
     return node;
 }
 
-AstNode *ast_var_decl_create(const char *name, const Type *type, AstNode *initializer, const Span *span) {
+AstNode *ast_var_decl_create(const char *name, const Type *type, int is_mutable, AstNode *initializer, const Span *span) {
     AstNode *node = ast_node_create(AST_VAR_DECL, span);
     if (node == NULL) {
         return NULL;
@@ -115,6 +115,7 @@ AstNode *ast_var_decl_create(const char *name, const Type *type, AstNode *initia
     node->as.var_decl.name = strdup(name);
     Type default_type = type_create(TYPE_KIND_UNKNOWN, "unknown");
     node->as.var_decl.type = type_copy(type == NULL ? &default_type : type);
+    node->as.var_decl.is_mutable = is_mutable;
     node->type = type_copy(&node->as.var_decl.type);
     node->as.var_decl.initializer = initializer;
     type_free(&default_type);
@@ -159,6 +160,16 @@ AstNode *ast_string_literal_create(const char *text, const Span *span) {
     return node;
 }
 
+AstNode *ast_bool_literal_create(int value, const Span *span) {
+    AstNode *node = ast_node_create(AST_BOOL_LITERAL, span);
+    if (node == NULL) {
+        return NULL;
+    }
+    node->as.bool_literal.value = value;
+    node->type = type_create(TYPE_KIND_BOOL, "bool");
+    return node;
+}
+
 AstNode *ast_identifier_create(const char *name, const Span *span) {
     AstNode *node = ast_node_create(AST_IDENTIFIER, span);
     if (node == NULL) {
@@ -186,6 +197,47 @@ AstNode *ast_binary_expr_create(AstNode *left, char op, AstNode *right, const Sp
     node->as.binary_expr.left = left;
     node->as.binary_expr.right = right;
     node->as.binary_expr.op = op;
+    return node;
+}
+
+AstNode *ast_unary_expr_create(char op, AstNode *value, const Span *span) {
+    AstNode *node = ast_node_create(AST_UNARY_EXPR, span);
+    if (node == NULL) {
+        return NULL;
+    }
+    node->as.unary_expr.op = op;
+    node->as.unary_expr.value = value;
+    return node;
+}
+
+AstNode *ast_assignment_create(AstNode *target, AstNode *value, const Span *span) {
+    AstNode *node = ast_node_create(AST_ASSIGNMENT, span);
+    if (node == NULL) {
+        return NULL;
+    }
+    node->as.assignment.target = target;
+    node->as.assignment.value = value;
+    return node;
+}
+
+AstNode *ast_if_create(AstNode *condition, AstNode *then_branch, AstNode *else_branch, const Span *span) {
+    AstNode *node = ast_node_create(AST_IF, span);
+    if (node == NULL) {
+        return NULL;
+    }
+    node->as.if_stmt.condition = condition;
+    node->as.if_stmt.then_branch = then_branch;
+    node->as.if_stmt.else_branch = else_branch;
+    return node;
+}
+
+AstNode *ast_while_create(AstNode *condition, AstNode *body, const Span *span) {
+    AstNode *node = ast_node_create(AST_WHILE, span);
+    if (node == NULL) {
+        return NULL;
+    }
+    node->as.while_stmt.condition = condition;
+    node->as.while_stmt.body = body;
     return node;
 }
 
@@ -220,6 +272,8 @@ void ast_node_free(AstNode *node) {
         ast_node_free(node->as.return_stmt.value);
     } else if (node->kind == AST_STRING_LITERAL) {
         free(node->as.string_literal.text);
+    } else if (node->kind == AST_BOOL_LITERAL) {
+        /* boolean literals hold no heap state */
     } else if (node->kind == AST_IDENTIFIER) {
         free(node->as.identifier.name);
     } else if (node->kind == AST_CALL) {
@@ -231,6 +285,18 @@ void ast_node_free(AstNode *node) {
     } else if (node->kind == AST_BINARY_EXPR) {
         ast_node_free(node->as.binary_expr.left);
         ast_node_free(node->as.binary_expr.right);
+    } else if (node->kind == AST_UNARY_EXPR) {
+        ast_node_free(node->as.unary_expr.value);
+    } else if (node->kind == AST_ASSIGNMENT) {
+        ast_node_free(node->as.assignment.target);
+        ast_node_free(node->as.assignment.value);
+    } else if (node->kind == AST_IF) {
+        ast_node_free(node->as.if_stmt.condition);
+        ast_node_free(node->as.if_stmt.then_branch);
+        ast_node_free(node->as.if_stmt.else_branch);
+    } else if (node->kind == AST_WHILE) {
+        ast_node_free(node->as.while_stmt.condition);
+        ast_node_free(node->as.while_stmt.body);
     }
     type_free(&node->type);
     free(node);

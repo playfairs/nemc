@@ -39,6 +39,8 @@ static const Token *parser_expect(Parser *parser, TokenKind kind) {
     return token;
 }
 
+static AstNode *parse_statement(Parser *parser);
+
 static Type parse_type(Parser *parser) {
     if (parser_accept(parser, TOKEN_INT_TYPE)) {
         return type_create(TYPE_KIND_INT, "int");
@@ -46,10 +48,13 @@ static Type parse_type(Parser *parser) {
     if (parser_accept(parser, TOKEN_STRING_TYPE)) {
         return type_create(TYPE_KIND_STRING, "string");
     }
+    if (parser_accept(parser, TOKEN_BOOL_TYPE)) {
+        return type_create(TYPE_KIND_BOOL, "bool");
+    }
     return type_create(TYPE_KIND_VOID, "void");
 }
 
-static AstNode *parse_expression(Parser *parser) {
+static AstNode *parse_primary(Parser *parser) {
     const Token *token = parser_peek(parser);
     if (token == NULL) {
         return NULL;
@@ -62,6 +67,14 @@ static AstNode *parse_expression(Parser *parser) {
         parser_next(parser);
         return ast_string_literal_create(token->text, &token->span);
     }
+    if (token->kind == TOKEN_TRUE) {
+        parser_next(parser);
+        return ast_bool_literal_create(1, &token->span);
+    }
+    if (token->kind == TOKEN_FALSE) {
+        parser_next(parser);
+        return ast_bool_literal_create(0, &token->span);
+    }
     if (token->kind == TOKEN_IDENT) {
         parser_next(parser);
         AstNode *identifier = ast_identifier_create(token->text, &token->span);
@@ -72,7 +85,7 @@ static AstNode *parse_expression(Parser *parser) {
                 return NULL;
             }
             while (!parser_accept(parser, TOKEN_RPAREN)) {
-                AstNode *arg = parse_expression(parser);
+                AstNode *arg = parse_primary(parser);
                 if (arg == NULL) {
                     ast_node_free(call);
                     return NULL;
@@ -86,14 +99,191 @@ static AstNode *parse_expression(Parser *parser) {
     }
     if (token->kind == TOKEN_LPAREN) {
         parser_next(parser);
-        AstNode *value = parse_expression(parser);
+        AstNode *value = parse_primary(parser);
         if (value == NULL) {
             return NULL;
         }
-        parser_expect(parser, TOKEN_RPAREN);
+        if (parser_expect(parser, TOKEN_RPAREN) == NULL) {
+            ast_node_free(value);
+            return NULL;
+        }
         return value;
     }
     return NULL;
+}
+
+static AstNode *parse_unary(Parser *parser) {
+    if (parser_accept(parser, TOKEN_BANG)) {
+        AstNode *value = parse_unary(parser);
+        if (value == NULL) {
+            return NULL;
+        }
+        const Token *token = parser_peek(parser);
+        return ast_unary_expr_create('!', value, token == NULL ? &value->span : &token->span);
+    }
+    return parse_primary(parser);
+}
+
+static AstNode *parse_multiplicative(Parser *parser) {
+    AstNode *left = parse_unary(parser);
+    if (left == NULL) {
+        return NULL;
+    }
+    while (1) {
+        if (parser_accept(parser, TOKEN_STAR)) {
+            AstNode *right = parse_unary(parser);
+            if (right == NULL) {
+                ast_node_free(left);
+                return NULL;
+            }
+            left = ast_binary_expr_create(left, '*', right, &left->span);
+        } else if (parser_accept(parser, TOKEN_SLASH)) {
+            AstNode *right = parse_unary(parser);
+            if (right == NULL) {
+                ast_node_free(left);
+                return NULL;
+            }
+            left = ast_binary_expr_create(left, '/', right, &left->span);
+        } else {
+            break;
+        }
+    }
+    return left;
+}
+
+static AstNode *parse_additive(Parser *parser) {
+    AstNode *left = parse_multiplicative(parser);
+    if (left == NULL) {
+        return NULL;
+    }
+    while (1) {
+        if (parser_accept(parser, TOKEN_PLUS)) {
+            AstNode *right = parse_multiplicative(parser);
+            if (right == NULL) {
+                ast_node_free(left);
+                return NULL;
+            }
+            left = ast_binary_expr_create(left, '+', right, &left->span);
+        } else if (parser_accept(parser, TOKEN_MINUS)) {
+            AstNode *right = parse_multiplicative(parser);
+            if (right == NULL) {
+                ast_node_free(left);
+                return NULL;
+            }
+            left = ast_binary_expr_create(left, '-', right, &left->span);
+        } else {
+            break;
+        }
+    }
+    return left;
+}
+
+static AstNode *parse_comparison(Parser *parser) {
+    AstNode *left = parse_additive(parser);
+    if (left == NULL) {
+        return NULL;
+    }
+    while (1) {
+        if (parser_accept(parser, TOKEN_EQUAL_EQUAL)) {
+            AstNode *right = parse_additive(parser);
+            if (right == NULL) {
+                ast_node_free(left);
+                return NULL;
+            }
+            left = ast_binary_expr_create(left, '=', right, &left->span);
+        } else if (parser_accept(parser, TOKEN_NOT_EQUAL)) {
+            AstNode *right = parse_additive(parser);
+            if (right == NULL) {
+                ast_node_free(left);
+                return NULL;
+            }
+            left = ast_binary_expr_create(left, '!', right, &left->span);
+        } else if (parser_accept(parser, TOKEN_LESS)) {
+            AstNode *right = parse_additive(parser);
+            if (right == NULL) {
+                ast_node_free(left);
+                return NULL;
+            }
+            left = ast_binary_expr_create(left, '<', right, &left->span);
+        } else if (parser_accept(parser, TOKEN_LESS_EQUAL)) {
+            AstNode *right = parse_additive(parser);
+            if (right == NULL) {
+                ast_node_free(left);
+                return NULL;
+            }
+            left = ast_binary_expr_create(left, 'L', right, &left->span);
+        } else if (parser_accept(parser, TOKEN_GREATER)) {
+            AstNode *right = parse_additive(parser);
+            if (right == NULL) {
+                ast_node_free(left);
+                return NULL;
+            }
+            left = ast_binary_expr_create(left, '>', right, &left->span);
+        } else if (parser_accept(parser, TOKEN_GREATER_EQUAL)) {
+            AstNode *right = parse_additive(parser);
+            if (right == NULL) {
+                ast_node_free(left);
+                return NULL;
+            }
+            left = ast_binary_expr_create(left, 'G', right, &left->span);
+        } else {
+            break;
+        }
+    }
+    return left;
+}
+
+static AstNode *parse_and(Parser *parser) {
+    AstNode *left = parse_comparison(parser);
+    if (left == NULL) {
+        return NULL;
+    }
+    while (parser_accept(parser, TOKEN_AMP_AMP)) {
+        AstNode *right = parse_comparison(parser);
+        if (right == NULL) {
+            ast_node_free(left);
+            return NULL;
+        }
+        left = ast_binary_expr_create(left, '&', right, &left->span);
+    }
+    return left;
+}
+
+static AstNode *parse_or(Parser *parser) {
+    AstNode *left = parse_and(parser);
+    if (left == NULL) {
+        return NULL;
+    }
+    while (parser_accept(parser, TOKEN_PIPE_PIPE)) {
+        AstNode *right = parse_and(parser);
+        if (right == NULL) {
+            ast_node_free(left);
+            return NULL;
+        }
+        left = ast_binary_expr_create(left, '|', right, &left->span);
+    }
+    return left;
+}
+
+static AstNode *parse_expression(Parser *parser) {
+    return parse_or(parser);
+}
+
+static AstNode *parse_block(Parser *parser) {
+    const Token *open = parser_expect(parser, TOKEN_LBRACE);
+    if (open == NULL) {
+        return NULL;
+    }
+    AstNode *block = ast_block_create(&open->span);
+    while (!parser_accept(parser, TOKEN_RBRACE)) {
+        AstNode *statement = parse_statement(parser);
+        if (statement == NULL) {
+            ast_node_free(block);
+            return NULL;
+        }
+        ast_list_push(&block->as.block.statements, statement);
+    }
+    return block;
 }
 
 static AstNode *parse_statement(Parser *parser) {
@@ -133,7 +323,46 @@ static AstNode *parse_statement(Parser *parser) {
         return ast_return_create(value, token == NULL ? &value->span : &token->span);
     }
 
+    if (parser_accept(parser, TOKEN_IF)) {
+        AstNode *condition = parse_expression(parser);
+        if (condition == NULL) {
+            return NULL;
+        }
+        AstNode *then_branch = parse_block(parser);
+        if (then_branch == NULL) {
+            ast_node_free(condition);
+            return NULL;
+        }
+        AstNode *else_branch = NULL;
+        if (parser_accept(parser, TOKEN_ELSE)) {
+            else_branch = parse_block(parser);
+            if (else_branch == NULL) {
+                ast_node_free(condition);
+                ast_node_free(then_branch);
+                return NULL;
+            }
+        }
+        return ast_if_create(condition, then_branch, else_branch, &condition->span);
+    }
+
+    if (parser_accept(parser, TOKEN_WHILE)) {
+        AstNode *condition = parse_expression(parser);
+        if (condition == NULL) {
+            return NULL;
+        }
+        AstNode *body = parse_block(parser);
+        if (body == NULL) {
+            ast_node_free(condition);
+            return NULL;
+        }
+        return ast_while_create(condition, body, &condition->span);
+    }
+
     if (parser_accept(parser, TOKEN_LET)) {
+        int is_mutable = 0;
+        if (parser_accept(parser, TOKEN_MUT)) {
+            is_mutable = 1;
+        }
         const Token *name = parser_expect(parser, TOKEN_IDENT);
         if (name == NULL) {
             return NULL;
@@ -147,7 +376,21 @@ static AstNode *parse_statement(Parser *parser) {
             initializer = parse_expression(parser);
         }
         parser_accept(parser, TOKEN_SEMICOLON);
-        return ast_var_decl_create(name->text, &type, initializer, &name->span);
+        return ast_var_decl_create(name->text, &type, is_mutable, initializer, &name->span);
+    }
+
+    AstNode *target = parse_primary(parser);
+    if (target != NULL && parser_accept(parser, TOKEN_EQUAL)) {
+        AstNode *value = parse_expression(parser);
+        if (value == NULL) {
+            ast_node_free(target);
+            return NULL;
+        }
+        parser_accept(parser, TOKEN_SEMICOLON);
+        return ast_assignment_create(target, value, &target->span);
+    }
+    if (target != NULL) {
+        ast_node_free(target);
     }
 
     return NULL;

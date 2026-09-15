@@ -26,9 +26,14 @@ typedef enum {
     AST_RETURN,
     AST_INTEGER_LITERAL,
     AST_STRING_LITERAL,
+    AST_BOOL_LITERAL,
     AST_IDENTIFIER,
     AST_CALL,
-    AST_BINARY_EXPR
+    AST_BINARY_EXPR,
+    AST_UNARY_EXPR,
+    AST_ASSIGNMENT,
+    AST_IF,
+    AST_WHILE
 } AstKind;
 
 typedef struct AstNode AstNode;
@@ -57,6 +62,7 @@ struct AstNode {
         struct {
             char *name;
             Type type;
+            int is_mutable;
             AstNode *initializer;
         } var_decl;
         struct {
@@ -72,6 +78,9 @@ struct AstNode {
             char *text;
         } string_literal;
         struct {
+            int value;
+        } bool_literal;
+        struct {
             char *name;
         } identifier;
         struct {
@@ -83,6 +92,23 @@ struct AstNode {
             AstNode *right;
             char op;
         } binary_expr;
+        struct {
+            char op;
+            AstNode *value;
+        } unary_expr;
+        struct {
+            AstNode *target;
+            AstNode *value;
+        } assignment;
+        struct {
+            AstNode *condition;
+            AstNode *then_branch;
+            AstNode *else_branch;
+        } if_stmt;
+        struct {
+            AstNode *condition;
+            AstNode *body;
+        } while_stmt;
     } as;
 };
 
@@ -94,14 +120,19 @@ Program *program_create(void);
 void program_free(Program *program);
 AstNode *ast_function_create(const char *name, const Type *return_type, const Span *span);
 AstNode *ast_parameter_create(const char *name, const Type *type, const Span *span);
-AstNode *ast_var_decl_create(const char *name, const Type *type, AstNode *initializer, const Span *span);
+AstNode *ast_var_decl_create(const char *name, const Type *type, int is_mutable, AstNode *initializer, const Span *span);
 AstNode *ast_block_create(const Span *span);
 AstNode *ast_return_create(AstNode *value, const Span *span);
 AstNode *ast_integer_literal_create(long long value, const Span *span);
 AstNode *ast_string_literal_create(const char *text, const Span *span);
+AstNode *ast_bool_literal_create(int value, const Span *span);
 AstNode *ast_identifier_create(const char *name, const Span *span);
 AstNode *ast_call_create(const char *name, const Span *span);
 AstNode *ast_binary_expr_create(AstNode *left, char op, AstNode *right, const Span *span);
+AstNode *ast_unary_expr_create(char op, AstNode *value, const Span *span);
+AstNode *ast_assignment_create(AstNode *target, AstNode *value, const Span *span);
+AstNode *ast_if_create(AstNode *condition, AstNode *then_branch, AstNode *else_branch, const Span *span);
+AstNode *ast_while_create(AstNode *condition, AstNode *body, const Span *span);
 void ast_list_push(AstList *list, AstNode *node);
 void ast_node_free(AstNode *node);
 Type type_create(TypeKind kind, const char *name);

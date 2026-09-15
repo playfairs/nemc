@@ -46,8 +46,50 @@ static void test_compile_minimal_program() {
     fclose(output_file);
 }
 
+static void test_control_flow_program() {
+    const char *input =
+        "fn main() {"
+        "   let mut x: int = 10;"
+        "   while x < 20 {"
+        "       if x == 15 {"
+        "           print(\"halfway\");"
+        "       }"
+        "       x = x + 1;"
+        "   }"
+        "}";
+    const char *input_path = "./build/test_control_flow.nem";
+    const char *output_path = "./build/test_control_flow.c";
+
+    FILE *input_file = fopen(input_path, "w");
+    assert(input_file != NULL);
+    fputs(input, input_file);
+    fclose(input_file);
+
+    assert(compile_source_file(input_path, output_path) == 0);
+}
+
+static void test_missing_return_rejected() {
+    const char *input =
+        "fn foo(x: int) -> int {"
+        "   if x > 0 {"
+        "       return 1;"
+        "   }"
+        "}";
+    const char *input_path = "./build/test_missing_return.nem";
+    const char *output_path = "./build/test_missing_return.c";
+
+    FILE *input_file = fopen(input_path, "w");
+    assert(input_file != NULL);
+    fputs(input, input_file);
+    fclose(input_file);
+
+    assert(compile_source_file(input_path, output_path) != 0);
+}
+
 int main(void) {
     test_lexer();
     test_compile_minimal_program();
+    test_control_flow_program();
+    test_missing_return_rejected();
     return 0;
 }

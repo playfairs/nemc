@@ -127,10 +127,77 @@ TokenList *lex_source(const Source *source) {
             index += 1;
             column += 1;
         } else if (current == '=') {
-            token.kind = TOKEN_EQUAL;
-            token.text = strdup("=");
-            index += 1;
-            column += 1;
+            if (index + 1 < source->length && source->text[index + 1] == '=') {
+                token.kind = TOKEN_EQUAL_EQUAL;
+                token.text = strdup("==");
+                index += 2;
+                column += 2;
+            } else {
+                token.kind = TOKEN_EQUAL;
+                token.text = strdup("=");
+                index += 1;
+                column += 1;
+            }
+        } else if (current == '!') {
+            if (index + 1 < source->length && source->text[index + 1] == '=') {
+                token.kind = TOKEN_NOT_EQUAL;
+                token.text = strdup("!=");
+                index += 2;
+                column += 2;
+            } else {
+                token.kind = TOKEN_BANG;
+                token.text = strdup("!");
+                index += 1;
+                column += 1;
+            }
+        } else if (current == '<') {
+            if (index + 1 < source->length && source->text[index + 1] == '=') {
+                token.kind = TOKEN_LESS_EQUAL;
+                token.text = strdup("<=");
+                index += 2;
+                column += 2;
+            } else {
+                token.kind = TOKEN_LESS;
+                token.text = strdup("<");
+                index += 1;
+                column += 1;
+            }
+        } else if (current == '>') {
+            if (index + 1 < source->length && source->text[index + 1] == '=') {
+                token.kind = TOKEN_GREATER_EQUAL;
+                token.text = strdup(">=");
+                index += 2;
+                column += 2;
+            } else {
+                token.kind = TOKEN_GREATER;
+                token.text = strdup(">");
+                index += 1;
+                column += 1;
+            }
+        } else if (current == '&') {
+            if (index + 1 < source->length && source->text[index + 1] == '&') {
+                token.kind = TOKEN_AMP_AMP;
+                token.text = strdup("&&");
+                index += 2;
+                column += 2;
+            } else {
+                token.kind = TOKEN_ERROR;
+                token.text = strdup("&");
+                token_list_push(tokens, token);
+                return tokens;
+            }
+        } else if (current == '|') {
+            if (index + 1 < source->length && source->text[index + 1] == '|') {
+                token.kind = TOKEN_PIPE_PIPE;
+                token.text = strdup("||");
+                index += 2;
+                column += 2;
+            } else {
+                token.kind = TOKEN_ERROR;
+                token.text = strdup("|");
+                token_list_push(tokens, token);
+                return tokens;
+            }
         } else if (current == '"') {
             size_t start = index;
             index += 1;
@@ -175,12 +242,26 @@ TokenList *lex_source(const Source *source) {
                 token.kind = TOKEN_FN;
             } else if (is_keyword(token.text, "let")) {
                 token.kind = TOKEN_LET;
+            } else if (is_keyword(token.text, "mut")) {
+                token.kind = TOKEN_MUT;
             } else if (is_keyword(token.text, "return")) {
                 token.kind = TOKEN_RETURN;
+            } else if (is_keyword(token.text, "if")) {
+                token.kind = TOKEN_IF;
+            } else if (is_keyword(token.text, "else")) {
+                token.kind = TOKEN_ELSE;
+            } else if (is_keyword(token.text, "while")) {
+                token.kind = TOKEN_WHILE;
+            } else if (is_keyword(token.text, "true")) {
+                token.kind = TOKEN_TRUE;
+            } else if (is_keyword(token.text, "false")) {
+                token.kind = TOKEN_FALSE;
             } else if (is_keyword(token.text, "int")) {
                 token.kind = TOKEN_INT_TYPE;
             } else if (is_keyword(token.text, "string")) {
                 token.kind = TOKEN_STRING_TYPE;
+            } else if (is_keyword(token.text, "bool")) {
+                token.kind = TOKEN_BOOL_TYPE;
             } else if (is_keyword(token.text, "print")) {
                 token.kind = TOKEN_PRINT;
             } else {
@@ -231,12 +312,28 @@ const char *token_kind_name(TokenKind kind) {
         case TOKEN_STAR: return "*";
         case TOKEN_SLASH: return "/";
         case TOKEN_EQUAL: return "=";
+        case TOKEN_EQUAL_EQUAL: return "==";
+        case TOKEN_NOT_EQUAL: return "!=";
+        case TOKEN_LESS: return "<";
+        case TOKEN_LESS_EQUAL: return "<=";
+        case TOKEN_GREATER: return ">";
+        case TOKEN_GREATER_EQUAL: return ">=";
+        case TOKEN_BANG: return "!";
+        case TOKEN_AMP_AMP: return "&&";
+        case TOKEN_PIPE_PIPE: return "||";
         case TOKEN_ARROW: return "->";
         case TOKEN_FN: return "fn";
         case TOKEN_LET: return "let";
+        case TOKEN_MUT: return "mut";
         case TOKEN_RETURN: return "return";
+        case TOKEN_IF: return "if";
+        case TOKEN_ELSE: return "else";
+        case TOKEN_WHILE: return "while";
+        case TOKEN_TRUE: return "true";
+        case TOKEN_FALSE: return "false";
         case TOKEN_INT_TYPE: return "int";
         case TOKEN_STRING_TYPE: return "string";
+        case TOKEN_BOOL_TYPE: return "bool";
         case TOKEN_PRINT: return "print";
         case TOKEN_ERROR: return "ERROR";
     }
