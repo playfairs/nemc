@@ -4,6 +4,7 @@
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
     treefmt-nix.url = "github:numtide/treefmt-nix";
+    nox.url = "github:playfairs/nox";
   };
 
   outputs =
@@ -11,6 +12,7 @@
       self,
       nixpkgs,
       treefmt-nix,
+      nox,
     }:
     let
       systems = [
@@ -48,6 +50,7 @@
         default = pkgs.mkShell {
           packages = [
             self.packages.${pkgs.system}.default
+            nox.packages.${pkgs.system}.default
             pkgs.clang
             pkgs.gcc
             pkgs.nixfmt
